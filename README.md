@@ -1,3 +1,11 @@
+<!--
+ * @Author: nijineko
+ * @Date: 2025-06-10 13:54:48
+ * @LastEditTime: 2025-06-10 23:18:12
+ * @LastEditors: nijineko
+ * @Description: 
+ * @FilePath: \noa-encoder-json\README.md
+-->
 # Noa Encoder Json
 JSON encoder for Noa Log. Supports encoding Log entries into JSON format for writing into log files.
 
@@ -20,7 +28,11 @@ func main() {
     // Create a new logger instance
     logger := noa.NewLog()
     // Set the encoder to the JSON encoder
-    logger.Writer.Encoder = noaencoderjson.NewJSONEncoder(logger)
+    logger.SetEncoder(noaencoderjson.NewJSONEncoder(logger))
+
+    // You can also set different encoders for print and write
+    // logger.Encoder.Print = noa.NewTextEncoder(logger)
+    // logger.Encoder.Write = noaencoderjson.NewJSONEncoder(logger)
 
     // Print Log
     logger.Info("Test", "This is an info message")

@@ -20,7 +20,11 @@ func main() {
     // 创建一个新的日志实例
     logger := noa.NewLog()
     // 设置编码器为 JSON 编码器
-    logger.Writer.Encoder = noaencoderjson.NewJSONEncoder(logger)
+    logger.SetEncoder(noaencoderjson.NewJSONEncoder(logger))
+
+    // 你也可以为打印和写入设置不同的编码器
+    // logger.Encoder.Print = noa.NewTextEncoder(logger)
+    // logger.Encoder.Write = noaencoderjson.NewJSONEncoder(logger)
 
     // 记录日志
     logger.Info("Test", "This is an info message")
