@@ -1,7 +1,7 @@
 /*
  * @Author: nijineko
  * @Date: 2025-06-10 12:57:28
- * @LastEditTime: 2025-06-10 13:40:17
+ * @LastEditTime: 2025-06-10 23:02:39
  * @LastEditors: nijineko
  * @Description: noa json log encoder
  * @FilePath: \noa-encoder-json\jsonEncoder.go
@@ -10,11 +10,13 @@ package noaencoderjson
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 
+	"github.com/noa-log/colorize"
 	"github.com/noa-log/noa"
+	"github.com/noa-log/noa/encoder"
 	"github.com/noa-log/noa/errors"
-	"github.com/noa-log/noa/tools/output"
 )
 
 // json log format
@@ -57,6 +59,47 @@ func NewJSONEncoder(Log *noa.LogConfig) *JSONEncoder {
 	}
 }
 
+// print json log data
+func (je *JSONEncoder) Print(c *encoder.Context) {
+	JSONData, err := marshalJSON(je.Log, c)
+	if err != nil {
+		panic(err)
+	}
+
+	// cache json data in context
+	c.Set("PrintData", JSONData)
+
+	fmt.Printf("%s\n", JSONData)
+}
+
+// return file extension for the encoded file
+func (je *JSONEncoder) WriteFileExtension() string {
+	return ".json"
+}
+
+// write log data to file
+func (je *JSONEncoder) Write(FileHandle *os.File, c *encoder.Context) error {
+	JSONData := c.Get("PrintData")
+	JSONDataBytes, ok := JSONData.([]byte)
+	if JSONData == nil || !ok {
+		JSON, err := marshalJSON(je.Log, c)
+		if err != nil {
+			return err
+		}
+
+		JSONDataBytes = JSON
+	}
+
+	// add newline character
+	JSONDataBytes = append(JSONDataBytes, '\n')
+
+	if _, err := FileHandle.Write(JSONDataBytes); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 /**
  * @description: Get file extension for the encoded file
  * @return {string} file extension
@@ -66,52 +109,52 @@ func (e *JSONEncoder) FileExtension() string {
 }
 
 /**
- * @description: JSON encoder write method
- * @param {*os.File} FileHandle file handle
- * @param {[]any} PrintData data to encode
- * @return {error} error if any
+ * @description: Marshal JSON log entry
+ * @param {*noa.LogConfig} l noa log instance
+ * @param {*encoder.Context} c encoder context
+ * @return {[]byte} JSON encoded log entry
+ * @return {error} error
  */
-func (e *JSONEncoder) Write(FileHandle *os.File, PrintData []any) error {
-	// unwrap the print data
-	Time, Level, Source, PrintData := output.UnwrapPrintData(e.Log, PrintData)
-
+func marshalJSON(l *noa.LogConfig, c *encoder.Context) ([]byte, error) {
 	LogEntry := JSONLog{
-		Time:       Time.Unix(),
-		TimeFormat: Time.Format(e.Log.TimeFormat),
-		Level:      Level,
-		Source:     Source,
+		Time:       c.Time.Unix(),
+		TimeFormat: c.Time.Format(l.TimeFormat),
+		Level:      c.Level,
+		Source:     c.Source,
 	}
 
-	LastErrorIndex := -1
-	for Index, Data := range PrintData {
-		// if data is error wrap
-		if DataError, ok := Data.(*errors.Error); ok {
-			var ErrorLogStackFrames []ErrorLogStackFrame
-			for _, Frames := range DataError.StackFrames() {
-				ErrorLogStackFrames = append(ErrorLogStackFrames, ErrorLogStackFrame{
-					Function:     Frames.Function,
-					File:         Frames.File,
-					Line:         Frames.Line,
-					PackageName:  Frames.PackageName,
-					FunctionName: Frames.FunctionName,
-				})
+	for Index, Data := range c.Data {
+		if l.RemoveColor {
+			if DataStr, ok := Data.(string); ok {
+				Data = colorize.Remove(DataStr)
+				c.Data[Index] = Data
 			}
-
-			LogEntry.Data = append(LogEntry.Data, ErrorLog{
-				Message:     DataError.Error(),
-				StackFrames: ErrorLogStackFrames,
-			})
-			LastErrorIndex = Index
-
-			continue
 		}
-		if _, ok := Data.(string); ok {
-			// if previous line is error log, skip 2 lines
-			if LastErrorIndex != -1 && (LastErrorIndex == Index-1 || LastErrorIndex == Index-2) {
+
+		if l.Errors.StackTrace {
+			// if data is error wrap
+			if DataError, ok := Data.(*errors.Error); ok {
+				var ErrorLogStackFrames []ErrorLogStackFrame
+				for _, Frames := range DataError.StackFrames() {
+					ErrorLogStackFrames = append(ErrorLogStackFrames, ErrorLogStackFrame{
+						Function:     Frames.Function,
+						File:         Frames.File,
+						Line:         Frames.Line,
+						PackageName:  Frames.PackageName,
+						FunctionName: Frames.FunctionName,
+					})
+				}
+
+				LogEntry.Data = append(LogEntry.Data, ErrorLog{
+					Message:     DataError.Error(),
+					StackFrames: ErrorLogStackFrames,
+				})
+
 				continue
 			}
-
-			// skip newline characters
+		}
+		// skip newline characters
+		if _, ok := Data.(string); ok {
 			if Data == "\n" || Data == "\r\n" {
 				continue
 			}
@@ -121,15 +164,5 @@ func (e *JSONEncoder) Write(FileHandle *os.File, PrintData []any) error {
 	}
 
 	// json encode
-	JSONData, err := json.Marshal(LogEntry)
-	if err != nil {
-		return err
-	}
-
-	// write to file
-	if _, err := FileHandle.Write(append(JSONData, '\n')); err != nil {
-		return err
-	}
-
-	return nil
+	return json.Marshal(LogEntry)
 }
